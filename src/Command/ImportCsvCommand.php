@@ -3,6 +3,8 @@
 namespace App\Command;
 
 use App\Entity\Film;
+use App\Entity\Actor;
+use App\Entity\Director;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
@@ -46,7 +48,7 @@ class ImportCsvCommand extends Command
             return Command::FAILURE;
         }
 
-        $io->note(sprintf('Processing %s', $csvFilePath));
+        $io->info(sprintf('Processing %s', $csvFilePath));
 
         $this->parseCsvFile($csvFilePath);
 
@@ -57,11 +59,21 @@ class ImportCsvCommand extends Command
 
     protected function parseCsvFile(string $csvFilePath): bool
     {
+        $actorsToCreate = [];
+        $directorsToCreate = [];
+
         $csvFilePointer = fopen($csvFilePath, 'r');
         $lineNumber = 0;
+
+        // Read Csv and Persist Films
         while (($csvFileRow = fgetcsv($csvFilePointer, 0, ',')) !== FALSE) {
             $lineNumber++;
+
+            echo 'Film '.$lineNumber."\r";
+
+            // Ignore first line
             if($lineNumber == 1) continue;
+
             $newFilm = new Film();
             $dateValidationRegex = "/\d{4}\-\d{2}-\d{2}/";
 
@@ -70,7 +82,10 @@ class ImportCsvCommand extends Command
             $gender = $csvFileRow[5];
             $duration = $csvFileRow[6];
             $producer = $csvFileRow[11];
+            $director = $csvFileRow[9];
+            $actors = explode(',', $csvFileRow[12]);
 
+            // Validate row film data
             if($title == '') continue;
             if($publishedAt == '') continue;
             if($gender == '') continue;
@@ -84,8 +99,60 @@ class ImportCsvCommand extends Command
             $newFilm->setDuration($csvFileRow[6]);
             $newFilm->setProducer($csvFileRow[11]);
             $this->entityManager->persist($newFilm);
+
+            if($director != '')
+            {
+                if(!isset($directorsToCreate[trim($director)])) $directorsToCreate[trim($director)] = [];
+                $directorsToCreate[trim($director)][] = $newFilm;
+            }
+
+            if(count($actors) > 0)
+            {
+                foreach($actors as $actor)
+                {
+                    if(!isset($actorsToCreate[trim($actor)])) $actorsToCreate[trim($actor)] = [];
+                    $actorsToCreate[trim($actor)][] = $newFilm;
+                }
+            }
         }
+
+        // Persist Directors
+        if(count($directorsToCreate) > 0)
+        {
+            $numberOfDirectors = count($directorsToCreate);
+            $directorNumber = 0;
+            foreach($directorsToCreate as $directorToCreateName => $filmsToAdd)
+            {
+                $directorNumber++;
+                echo 'Director '.round($directorNumber/$numberOfDirectors*100)."%                \r";
+                $newDirector = new Director();
+                $newDirector->setName($directorToCreateName);
+                foreach($filmsToAdd as $filmToAdd)
+                    $newDirector->addFilm($filmToAdd);
+                $this->entityManager->persist($newDirector);
+            }
+        }
+
+        // Persist Actors
+        if(count($actorsToCreate) > 0)
+        {
+            $numberOfActors = count($actorsToCreate);
+            $actorNumber = 0;
+            foreach($actorsToCreate as $actorToCreateName => $filmsToAdd)
+            {
+                $actorNumber++;
+                echo 'Actor '.round($actorNumber/$numberOfActors*100)."%                \r";
+                $newActor = new Actor();
+                $newActor->setName($actorToCreateName);
+                foreach($filmsToAdd as $filmToAdd)
+                    $newActor->addFilm($filmToAdd);
+                $this->entityManager->persist($newActor);
+            }
+        }
+
+        echo "Persisting               \r";
         $this->entityManager->flush();
+
         return true;
     }
 }

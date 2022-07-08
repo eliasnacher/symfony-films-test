@@ -18,7 +18,7 @@ class Director
     #[ORM\Column(type: 'string', length: 255)]
     private $name;
 
-    #[ORM\Column(type: 'datetime_immutable')]
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private $bornAt;
 
     #[ORM\ManyToMany(targetEntity: Film::class, mappedBy: 'directors')]
